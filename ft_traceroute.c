@@ -77,15 +77,29 @@ int set_host_addr(struct sockaddr_in *sa, const char *addr, const char *port, in
     return (0);
 }
 
+// int send_n_probes(int n, int sendfd, struct sockaddr_in *sin_send){
+//     int wc = 0;
+
+//     for (int i = 0; i < n; ++i){
+//         send_probe(sendfd, sin_send, NULL);
+//     }
+
+//     return (wc);
+// }
 
 int send_probe(int sendfd, struct sockaddr_in *sin_send, char packet[DGRAM_SIZE]){
     int wc = 0;
+    struct rec *rec;
 
     if ((wc = sendto(sendfd, packet, DGRAM_SIZE, 0, (struct sockaddr *)sin_send, sizeof(struct sockaddr_in))) == -1){
         ft_printf( "ft_traceroute: sendto: %s\n", strerror(errno));
         return(-1);
     }
 
+    rec = (struct rec *)packet;
+    rec->seq += 1;
+    rec->ttl += 1;
+    //add the current time too in rec
     return (wc);
 }
 
@@ -97,7 +111,7 @@ int recv_packet(int recvfd, struct sockaddr_in *sin_recv, char packet[DGRAM_SIZE
         ft_printf( "ft_traceroute: recvfrom: %s\n", strerror(errno));
         return(-1);
     }
-
+    
     return (rc);
 }
 

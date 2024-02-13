@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include "ft_traceroute.h"
 
-void test_recv_packet(){
+void test_recv_n_packets(int n){
     char packet[DGRAM_SIZE + 1];
     int recvfd = create_raw_icmp_socket(AF_INET);
     int bytes_recvd = -1;
@@ -11,13 +11,17 @@ void test_recv_packet(){
 
     ft_bzero(packet, DGRAM_SIZE + 1);
 
-    bytes_recvd = recv_packet(recvfd, &sin_recv, packet);
-    ft_printf("%d\n", bytes_recvd);
-    assert(bytes_recvd != -1 && "test_recv_packet");
+    for (int i = 0; i < n; ++i){
+        bytes_recvd = -1;
+        bytes_recvd = recv_packet(recvfd, &sin_recv, packet);
+        ft_printf("Received: %d\n", bytes_recvd);
+        assert(bytes_recvd != -1 && "test_recv_n_packets");
+    }
+    
     close(recvfd);
 }
 
-void test_send_probe(){
+void test_send_n_probes(int n){
     char packet[DGRAM_SIZE];
     ft_bzero(packet, DGRAM_SIZE);
     struct rec  *rec;
@@ -29,13 +33,22 @@ void test_send_probe(){
     struct sockaddr_in sin_send;
     int sendfd = create_dgram_socket(AF_INET);
 
-    int bytes_sent = -1;
+    int bytes_sent;
+    uint16_t last_port;
 
     set_local_bind_addr(&sin_bind);
     set_host_addr(&sin_send, "8.8.8.8", UDP_PORT, AF_INET);
     bind_socket(sendfd, (struct sockaddr *)&sin_bind, sizeof(sin_bind));
-    bytes_sent = send_probe(sendfd, &sin_send, packet);
-    assert(bytes_sent == DGRAM_SIZE && "test_send_probe");
+
+    last_port =  ntohs(sin_send.sin_port);
+
+    for (int i = 0; i < n; ++i){
+        bytes_sent = -1;
+        bytes_sent = send_probe(sendfd, &sin_send, packet);
+        ft_printf("Sent: %d\n", bytes_sent);
+        assert(bytes_sent == DGRAM_SIZE && "test_send_n_probes");
+        assert(last_port == ntohs(sin_send.sin_port) + i && "using the same port for each probe");
+    }
     close(sendfd);
 }
 
@@ -85,8 +98,9 @@ int main(){
     test_create_socket(&create_raw_icmp_socket);
     test_bind_socket();
     test_get_send_addr();
-    test_send_probe();
-    test_recv_packet();
+    test_send_n_probes(1);
+    test_recv_n_packets(1);
+    test_send_n_probes(2);
 
     //CLEAN
     
