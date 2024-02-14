@@ -23,11 +23,7 @@ void test_process_icmp(int ttl)
     set_local_bind_addr(&sin_bind);
     int sendfd = create_dgram_socket(AF_INET);
     bind_socket(sendfd, (struct sockaddr *)&sin_bind, sizeof(sin_bind));
-    const int val=ttl;
-    if ( setsockopt(sendfd, SOL_IP, IP_TTL, &val, sizeof(val)) != 0){
-        ft_printf("ft_traceroute: setsockopt: %s\n", strerror(errno));
-        assert(false);
-    }
+    set_ttl_sock_opt(sendfd, 1);
     set_host_addr(&sin_send, "8.8.8.8", UDP_PORT, AF_INET);
 
     send_probe(sendfd, &sin_send, packet);
@@ -119,6 +115,15 @@ void test_bind_socket()
     close(sockfd);
 }
 
+void test_set_ttl_sock_opt(int (*create_socket)(int), int ttl){
+    int sockfd = create_socket(AF_INET);
+    
+    assert(sockfd > 0 && "test_set_ttl_sock_opt failed to create socket");
+    assert(set_ttl_sock_opt(sockfd, ttl) != -1 && "test_set_ttl_sock_opt");
+
+    close(sockfd);
+}
+
 void test_create_socket(int (*create_socket)(int))
 {
     int sockfd = create_socket(AF_INET);
@@ -134,6 +139,7 @@ int main()
     // TESTS
     test_create_socket(&create_dgram_socket);
     test_create_socket(&create_raw_icmp_socket);
+    test_set_ttl_sock_opt(&create_dgram_socket, 30);
     test_bind_socket();
     test_get_send_addr();
     test_send_n_probes(1);

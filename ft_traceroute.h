@@ -42,5 +42,6 @@ int send_n_probes(int, struct sockaddr_in *, char[DGRAM_SIZE]);
 int recv_packet(int, struct sockaddr_in *, char[DGRAM_SIZE + 1]);
 int recv_n_packets(int, int, struct sockaddr_in *, char[DGRAM_SIZE + 1]);
 int process_icmp(int, char[DGRAM_SIZE + 1], uint16_t, uint16_t);
+int set_ttl_sock_opt(int, int);
 
 #endif

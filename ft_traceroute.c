@@ -223,7 +223,7 @@ int process_icmp(int rc, char packet[DGRAM_SIZE + 1], uint16_t sport, uint16_t d
     icmp = (struct icmp *)(packet + hlen1);
     if ((icmplen = rc - hlen1) < 8)
     {
-        ft_printf("not enough to look for ICMP header");
+        ft_printf("not enough to look for ICMP header\n");
         return (-1);
     }
 
@@ -232,7 +232,7 @@ int process_icmp(int rc, char packet[DGRAM_SIZE + 1], uint16_t sport, uint16_t d
     {
         if (icmplen < 8 + sizeof(struct ip))
         {
-            ft_printf("not enought data to look at inner ip");
+            ft_printf("not enought data to look at inner ip\n");
             return (-1);
         }
 
@@ -240,7 +240,7 @@ int process_icmp(int rc, char packet[DGRAM_SIZE + 1], uint16_t sport, uint16_t d
         hlen2 = hip->ip_hl << 2;
         if (icmplen < 8 + hlen2 + 4)
         {
-            ft_printf("not enough data to look for UDP port");
+            ft_printf("not enough data to look for UDP port\n");
             return (-1);
         }
         udp = (struct udphdr *)(packet + hlen1 + 8 + hlen2);
@@ -248,7 +248,7 @@ int process_icmp(int rc, char packet[DGRAM_SIZE + 1], uint16_t sport, uint16_t d
             udp->uh_sport == sport &&
             udp->uh_dport == dport)
         {
-            ft_printf("we hit an intermediate router");
+            ft_printf("we hit an intermediate router\n");
             return (-2);
         }
     }
@@ -256,7 +256,7 @@ int process_icmp(int rc, char packet[DGRAM_SIZE + 1], uint16_t sport, uint16_t d
     {
         if (icmplen < 8 + sizeof(struct ip))
         {
-            ft_printf("not enought data to look at inner IP");
+            ft_printf("not enought data to look at inner IP\n");
             return (-1);
         }
 
@@ -264,7 +264,7 @@ int process_icmp(int rc, char packet[DGRAM_SIZE + 1], uint16_t sport, uint16_t d
         hlen2 = hip->ip_hl << 2;
         if (icmplen < 8 + hlen2 + 4)
         {
-            ft_printf("not enough data to look for UDP port");
+            ft_printf("not enough data to look for UDP port\n");
             return (-1);
         }
         udp = (struct udphdr *)(packet + hlen1 + 8 + hlen2);
@@ -280,4 +280,15 @@ int process_icmp(int rc, char packet[DGRAM_SIZE + 1], uint16_t sport, uint16_t d
     }
 
     return -1;
+}
+
+int set_ttl_sock_opt(int sockfd, int ttl){
+    const int val = ttl;
+
+    if (setsockopt(sockfd, SOL_IP, IP_TTL, &val, sizeof(val)) != 0)
+    {
+        ft_printf("ft_traceroute: setsockopt: %s\n", strerror(errno));
+        return (-1);
+    }
+    return (0);
 }
