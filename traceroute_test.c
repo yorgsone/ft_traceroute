@@ -2,10 +2,37 @@
 #include <stdbool.h>
 #include "ft_traceroute.h"
 
+
+void test_correct_prints(){
+    assert(false && "test_correct_prints");
+}
+
+void test_time_diffs(){
+    assert(false && "test_time_diffs");
+}
+
+void test_fail_trace_loop(int n_probes, int max_ttl){
+    struct tr tr;
+
+    tr.n_probes = n_probes;
+    tr.max_ttl = max_ttl;
+    tr.max_wait = MAX_WAIT;
+    tr.host_address = "asd";
+
+    assert(trace_loop(&tr) == -1 && "test_fail_trace_loop");
+}
+
+
 void test_trace_loop(int n_probes, int max_ttl)
 {
-    // traceloop(n_probes, max_ttl);
-    assert(false && "test_traceroute_loop");
+    struct tr tr;
+
+    tr.n_probes = n_probes;
+    tr.max_ttl = max_ttl;
+    tr.max_wait = MAX_WAIT;
+    tr.host_address = "8.8.8.8";
+
+    assert(trace_loop(&tr) == true && "test_traceroute_loop");
 }
 
 void test_process_icmp(int ttl)
@@ -35,7 +62,7 @@ void test_process_icmp(int ttl)
     struct sockaddr_in sin_recv;
     ft_bzero(rcv_packet, DGRAM_SIZE + 1);
 
-    int rc = recv_packet(recvfd, &sin_recv, rcv_packet);
+    int rc = wait_reply(recvfd, &sin_recv, rcv_packet);
     ft_printf("%d\n", rc);
     assert(rc != -1 && "faulty receive");
     assert(process_icmp(rc, rcv_packet, sin_bind.sin_port, sin_send.sin_port) != -1 && "failed to process icmp packet");
@@ -73,11 +100,12 @@ void test_send_n_probes(int n)
     int bytes_sent;
     uint16_t last_port;
 
+    set_local_bind_addr(&sin_bind);
     set_host_addr(&sin_send, "8.8.8.8", UDP_PORT, AF_INET);
 
     last_port = ntohs(sin_send.sin_port);
 
-    int wc = send_n_probes(n, &sin_send, packet);
+    int wc = send_n_probes(n, &sin_send, &sin_bind, packet, MAX_TTL);
     assert(wc == DGRAM_SIZE * n && "test_send_n_probes");
     assert(last_port + n == ntohs(sin_send.sin_port) && "using the same port for each probe");
 }
@@ -147,6 +175,10 @@ int main()
     test_send_n_probes(2);
     test_recv_n_packets(2);
     test_process_icmp(11);
-    test_trace_loop(1, 1);
+    test_trace_loop(3, 2);
+    test_fail_trace_loop(3, 2);
+    test_time_diffs();
+    test_correct_prints();
+
     // CLEAN
 }

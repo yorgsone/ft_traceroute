@@ -116,7 +116,43 @@ static void update_packet(char packet[DGRAM_SIZE])
     gettimeofday(&rec->tv, NULL);
 }
 
-int trace_loop(int n_probes, int max_ttl)
+static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_packet[DGRAM_SIZE + 1], int ttl)
+{
+    int wc = 0;
+    int rc = 0;
+    int sendfd;
+
+    for (int i = 0; i < tr->n_probes; ++i)
+    {
+        sendfd = create_dgram_socket(AF_INET);
+        if (sendfd == -1)
+            return (-1);
+        if (set_ttl_sock_opt(sendfd, ttl) == -1)
+            return (-1);
+        tr->sin_bind.sin_port = htons(ntohs(tr->sin_bind.sin_port) + 1);
+        if (bind_socket(sendfd, (struct sockaddr *)&tr->sin_bind, sizeof(tr->sin_bind)) == -1)
+            return (-1);
+        if (send_probe(sendfd, &tr->sin_send, send_packet) == -1)
+            return (-1);
+        wc += DGRAM_SIZE;
+        ft_printf("%d %d\n", ((struct rec *)send_packet)->seq, ((struct rec *)send_packet)->ttl);
+        rc = wait_reply(tr->recvfd, &tr->sin_recv, rcv_packet);
+        if (rc == -1)
+            return (-1);
+        if (rc == 0)
+            ft_printf(" *");
+        if (process_icmp(rc, rcv_packet, tr->sin_bind.sin_port, tr->sin_send.sin_port) == 1)
+            ft_printf(" reached\n");
+        ft_bzero(rcv_packet, DGRAM_SIZE + 1);
+        update_packet(send_packet);
+        tr->sin_send.sin_port = htons(ntohs(tr->sin_send.sin_port) + 1);
+        close(sendfd);
+    }
+
+    return (wc);
+}
+
+int trace_loop(struct tr *tr)
 {
     char packet[DGRAM_SIZE];
     ft_bzero(packet, DGRAM_SIZE);
@@ -126,26 +162,38 @@ int trace_loop(int n_probes, int max_ttl)
     rec->ttl = 1;
     gettimeofday(&rec->tv, NULL);
 
-    for (int i = 0; i < max_ttl; ++i)
+    char rcv_packet[DGRAM_SIZE + 1];
+    int recvfd = create_raw_icmp_socket(AF_INET);
+    tr->recvfd = recvfd;
+    int recv_len = DGRAM_SIZE + 1;
+    ft_bzero(rcv_packet, DGRAM_SIZE + 1);
+
+    set_local_bind_addr(&tr->sin_bind);
+    set_host_addr(&tr->sin_send, tr->host_address, UDP_PORT, AF_INET);
+
+    for (int i = 1; i <= tr->max_ttl; ++i)
     {
-        ;
+        if (send_recv_n(tr, packet, rcv_packet, i) == -1)
+            return (-1);
     }
     return 1;
 }
 
-int send_n_probes(int n, struct sockaddr_in *sin_send, char packet[DGRAM_SIZE])
+int send_n_probes(int n, struct sockaddr_in *sin_send, struct sockaddr_in *sin_bind, char packet[DGRAM_SIZE], int ttl)
 {
     int wc = 0;
     int sendfd;
-    struct sockaddr_in sin_bind;
-
-    set_local_bind_addr(&sin_bind);
 
     for (int i = 0; i < n; ++i)
     {
         sendfd = create_dgram_socket(AF_INET);
-        sin_bind.sin_port = htons(ntohs(sin_bind.sin_port) + 1);
-        bind_socket(sendfd, (struct sockaddr *)&sin_bind, sizeof(sin_bind));
+        if (sendfd == -1)
+            return (-1);
+        if (set_ttl_sock_opt(sendfd, ttl) == -1)
+            return (-1);
+        sin_bind->sin_port = htons(ntohs(sin_bind->sin_port) + 1);
+        if (bind_socket(sendfd, (struct sockaddr *)sin_bind, sizeof(*sin_bind)) == -1)
+            return (-1);
         if (send_probe(sendfd, sin_send, packet) == -1)
             return (-1);
         wc += DGRAM_SIZE;
@@ -177,7 +225,7 @@ int recv_n_packets(int n, int recvfd, struct sockaddr_in *sin_recv, char packet[
 
     for (int i = 0; i < n; ++i)
     {
-        if (recv_packet(recvfd, sin_recv, packet) == -1)
+        if (wait_reply(recvfd, sin_recv, packet) == -1)
             return (-1);
         rc += DGRAM_SIZE + 1;
     }
@@ -185,7 +233,7 @@ int recv_n_packets(int n, int recvfd, struct sockaddr_in *sin_recv, char packet[
     return (rc);
 }
 
-int recv_packet(int recvfd, struct sockaddr_in *sin_recv, char packet[DGRAM_SIZE + 1])
+int wait_reply(int recvfd, struct sockaddr_in *sin_recv, char packet[DGRAM_SIZE + 1])
 {
     int rc = 0;
     int recv_len = DGRAM_SIZE;
@@ -272,9 +320,10 @@ int process_icmp(int rc, char packet[DGRAM_SIZE + 1], uint16_t sport, uint16_t d
             udp->uh_sport == sport &&
             udp->uh_dport == dport)
         {
-            if (icmp->icmp_code == ICMP_UNREACH_PORT){
+            if (icmp->icmp_code == ICMP_UNREACH_PORT)
+            {
                 return (1);
-            }  
+            }
             return (icmp->icmp_code);
         }
     }
@@ -282,7 +331,8 @@ int process_icmp(int rc, char packet[DGRAM_SIZE + 1], uint16_t sport, uint16_t d
     return -1;
 }
 
-int set_ttl_sock_opt(int sockfd, int ttl){
+int set_ttl_sock_opt(int sockfd, int ttl)
+{
     const int val = ttl;
 
     if (setsockopt(sockfd, SOL_IP, IP_TTL, &val, sizeof(val)) != 0)

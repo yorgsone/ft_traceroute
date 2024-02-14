@@ -30,6 +30,18 @@ struct rec
     struct timeval tv;
 };
 
+struct tr
+{
+    int recvfd;
+    int max_ttl;
+    int n_probes;
+    int max_wait;
+    char *host_address;
+    struct sockaddr_in sin_bind;
+    struct sockaddr_in sin_send;
+    struct sockaddr_in sin_recv;
+};
+
 int create_dgram_socket(int);
 int create_raw_icmp_socket(int);
 int bind_socket(int, struct sockaddr *, socklen_t);
@@ -38,10 +50,11 @@ struct addrinfo *host_serv(const char *, const char *, int, int, int);
 int sock_ntop_host(const struct sockaddr *, socklen_t, char *, size_t);
 int set_host_addr(struct sockaddr_in *, const char *, const char *, int);
 int send_probe(int, struct sockaddr_in *, char[DGRAM_SIZE]);
-int send_n_probes(int, struct sockaddr_in *, char[DGRAM_SIZE]);
-int recv_packet(int, struct sockaddr_in *, char[DGRAM_SIZE + 1]);
+int send_n_probes(int, struct sockaddr_in *, struct sockaddr_in *, char[DGRAM_SIZE], int);
+int wait_reply(int, struct sockaddr_in *, char[DGRAM_SIZE + 1]);
 int recv_n_packets(int, int, struct sockaddr_in *, char[DGRAM_SIZE + 1]);
 int process_icmp(int, char[DGRAM_SIZE + 1], uint16_t, uint16_t);
 int set_ttl_sock_opt(int, int);
+int trace_loop(struct tr *tr);
 
 #endif
