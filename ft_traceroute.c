@@ -108,15 +108,17 @@ int set_host_addr(struct sockaddr_in *sa, const char *addr, const char *port, in
 
 double deltaT(struct timeval *t1p, struct timeval *t2p)
 {
-	register double dt;
+    register double dt;
 
-	dt = (double)(t2p->tv_sec - t1p->tv_sec) * 1000.0 +
-	     (double)(t2p->tv_usec - t1p->tv_usec) / 1000.0;
-	return (dt);
+    dt = (double)(t2p->tv_sec - t1p->tv_sec) * 1000.0 +
+         (double)(t2p->tv_usec - t1p->tv_usec) / 1000.0;
+    return (dt);
 }
 
-int resolve_host(struct sockaddr *sa, socklen_t sa_len , char *host, socklen_t host_len){
-    if (getnameinfo(sa, sa_len, host, host_len, NULL, 0, 0) != 0){
+int resolve_host(struct sockaddr *sa, socklen_t sa_len, char *host, socklen_t host_len)
+{
+    if (getnameinfo(sa, sa_len, host, host_len, NULL, 0, 0) != 0)
+    {
         printf("ft_traceroute: getnameinfo: %s\n", strerror(errno));
         return (-1);
     }
@@ -165,55 +167,63 @@ static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_pac
         gettimeofday(&reply_t, NULL);
         if (rc == -1)
             return (-1);
-        if (rc == 0){
+        if (rc == 0)
+        {
             printf(" *");
             fflush(stdout);
             goto update;
         }
-        if (tr->last_addr != tr->sin_recv.sin_addr.s_addr){
-            tr->last_addr =tr->sin_recv.sin_addr.s_addr;
+        if (tr->last_addr != tr->sin_recv.sin_addr.s_addr)
+        {
+            tr->last_addr = tr->sin_recv.sin_addr.s_addr;
             if (sock_ntop_host((struct sockaddr *)&tr->sin_recv, sizeof(tr->sin_recv), canonname, sizeof(canonname)) == -1)
                 return (-1);
-            if (resolve_host((struct sockaddr*)&tr->sin_recv,  sizeof(tr->sin_recv), host, sizeof(host)) == -1)
+            if (resolve_host((struct sockaddr *)&tr->sin_recv, sizeof(tr->sin_recv), host, sizeof(host)) == -1)
                 return (-1);
-            printf(" %s (%s)", host,canonname);
+            printf(" %s (%s)", host, canonname);
         }
-        printf(" %.3f ms",deltaT(&send_t,&reply_t));
+        printf(" %.3f ms", deltaT(&send_t, &reply_t));
         code = process_icmp(rc, rcv_packet, tr->sin_bind.sin_port, tr->sin_send.sin_port, 0);
-        if (code == ICMP_UNREACH_PORT){
+        if (code == ICMP_UNREACH_PORT)
+        {
             ++got_there;
             ip = (struct ip *)rcv_packet;
-						if (ip->ip_ttl <= 1)
-							printf(" !");
+            if (ip->ip_ttl <= 1)
+                printf(" !");
         }
-        else if (code == ICMP_UNREACH_NET){
+        else if (code == ICMP_UNREACH_NET)
+        {
             ++unreachable;
             printf(" !N");
         }
-        else if (code == ICMP_UNREACH_HOST){
+        else if (code == ICMP_UNREACH_HOST)
+        {
             ++unreachable;
             printf(" !H");
         }
-        else if (code == ICMP_UNREACH_PROTOCOL){
+        else if (code == ICMP_UNREACH_PROTOCOL)
+        {
             ++unreachable;
             printf(" !P");
         }
-        else if (code == ICMP_UNREACH_NEEDFRAG){
+        else if (code == ICMP_UNREACH_NEEDFRAG)
+        {
             ++unreachable;
             printf(" !F");
         }
-        else if (code == ICMP_UNREACH_SRCFAIL){
+        else if (code == ICMP_UNREACH_SRCFAIL)
+        {
             ++unreachable;
             printf(" !S");
         }
-        update:
+    update:
         ft_bzero(rcv_packet, RECV_SIZE);
         update_packet(send_packet);
         tr->sin_send.sin_port = htons(ntohs(tr->sin_send.sin_port) + 1);
         close(sendfd);
     }
     printf("\n");
-    if (got_there || unreachable >= tr->n_probes -1)
+    if (got_there || unreachable >= tr->n_probes - 1)
         exit(0);
 
     return (1);
@@ -243,7 +253,7 @@ int trace_loop(struct tr *tr)
     if (set_host_addr(&tr->sin_send, tr->host_address, UDP_PORT, AF_INET) == -1)
         return (-1);
     if (sock_ntop_host((struct sockaddr *)&tr->sin_send, sizeof(tr->sin_send), presentational_address, sizeof(presentational_address)) == -1)
-        return (-1); 
+        return (-1);
 
     printf("traceroute to %s (%s), %d hops max, %d byte packets\n", tr->host_address, presentational_address, tr->max_ttl, DGRAM_SIZE + sizeof(struct ip) + sizeof(struct udphdr));
     for (int i = 1; i <= tr->max_ttl; ++i)
@@ -352,7 +362,8 @@ int process_icmp(int rc, char packet[RECV_SIZE], uint16_t sport, uint16_t dport,
     }
 
     if ((icmp->icmp_type == ICMP_TIMXCEED &&
-        icmp->icmp_code == ICMP_TIMXCEED_INTRANS) || icmp->icmp_type == ICMP_UNREACH)
+         icmp->icmp_code == ICMP_TIMXCEED_INTRANS) ||
+        icmp->icmp_type == ICMP_UNREACH)
     {
         if (icmplen < 8 + sizeof(struct ip))
         {
@@ -368,7 +379,7 @@ int process_icmp(int rc, char packet[RECV_SIZE], uint16_t sport, uint16_t dport,
                 printf("not enough data to look for UDP port\n");
             return (-1);
         }
-        
+
         udp = (struct udphdr *)(packet + hlen1 + 8 + hlen2);
         if (hip->ip_p == IPPROTO_UDP &&
             udp->uh_sport == sport &&
@@ -376,7 +387,7 @@ int process_icmp(int rc, char packet[RECV_SIZE], uint16_t sport, uint16_t dport,
         {
             if (icmp->icmp_type != ICMP_UNREACH)
                 return (-2);
-            return(icmp->icmp_code);
+            return (icmp->icmp_code);
         }
     }
     return -1;
