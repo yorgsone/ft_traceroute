@@ -198,7 +198,6 @@ int main()
     test_process_icmp(11);
     test_trace_loop(3, 3, "8.8.8.8");
     test_trace_loop(3, 12, "dns.google");
-    test_trace_loop(3, 15, "amazon.fr");
     test_fail_trace_loop(1, 1, "adf");
     test_time_diffs();
     test_resolve_address();

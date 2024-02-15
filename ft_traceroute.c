@@ -180,8 +180,8 @@ static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_pac
         }
         printf(" %.3f ms",deltaT(&send_t,&reply_t));
         code = process_icmp(rc, rcv_packet, tr->sin_bind.sin_port, tr->sin_send.sin_port, 0);
-        if (code == 1){
-            got_there += ICMP_UNREACH_PORT;
+        if (code == ICMP_UNREACH_PORT){
+            ++got_there;
             ip = (struct ip *)rcv_packet;
 						if (ip->ip_ttl <= 1)
 							printf(" !");
