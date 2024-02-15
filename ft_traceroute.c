@@ -10,7 +10,7 @@ int create_dgram_socket(int domain)
     sockfd = socket(domain, SOCK_DGRAM, 0);
     if (sockfd == -1)
     {
-        ft_printf("ft_traceroute: socket: %s\n", strerror(errno));
+        printf("ft_traceroute: socket: %s\n", strerror(errno));
         return (-1);
     }
     return sockfd;
@@ -26,7 +26,7 @@ int create_raw_icmp_socket(int domain)
     sockfd = socket(domain, SOCK_RAW, domain == AF_INET ? IPPROTO_ICMP : IPPROTO_ICMPV6);
     if (sockfd == -1)
     {
-        ft_printf("ft_traceroute: socket: %s\n", strerror(errno));
+        printf("ft_traceroute: socket: %s\n", strerror(errno));
         return (-1);
     }
     return sockfd;
@@ -36,7 +36,7 @@ int bind_socket(int sockfd, struct sockaddr *sa, socklen_t len)
 {
     if (bind(sockfd, sa, len) == -1)
     {
-        ft_printf("ft_traceroute: bind_socket: %s\n", strerror(errno));
+        printf("ft_traceroute: bind_socket: %s\n", strerror(errno));
         return (-1);
     }
     return (0);
@@ -66,7 +66,7 @@ struct addrinfo *host_serv(const char *addr, const char *port, int flags, int fa
     hints.ai_socktype = socktype;
     if ((err = getaddrinfo(addr, port, &hints, &res)) != 0)
     {
-        ft_printf("ft_traceroute: %s: %s\n", addr, gai_strerror(err));
+        printf("ft_traceroute: %s: %s\n", addr, gai_strerror(err));
         return (NULL);
     }
 
@@ -106,6 +106,23 @@ int set_host_addr(struct sockaddr_in *sa, const char *addr, const char *port, in
     return (0);
 }
 
+double deltaT(struct timeval *t1p, struct timeval *t2p)
+{
+	register double dt;
+
+	dt = (double)(t2p->tv_sec - t1p->tv_sec) * 1000.0 +
+	     (double)(t2p->tv_usec - t1p->tv_usec) / 1000.0;
+	return (dt);
+}
+
+int resolve_host(struct sockaddr *sa, socklen_t sa_len , char *host, socklen_t host_len){
+    if (getnameinfo(sa, sa_len, host, host_len, NULL, 0, 0) != 0){
+        printf("ft_traceroute: getnameinfo: %s\n", strerror(errno));
+        return (-1);
+    }
+    return (0);
+}
+
 static void update_packet(char packet[DGRAM_SIZE])
 {
     struct rec *rec;
@@ -116,12 +133,20 @@ static void update_packet(char packet[DGRAM_SIZE])
     gettimeofday(&rec->tv, NULL);
 }
 
-static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_packet[DGRAM_SIZE + 1], int ttl)
+static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_packet[RECV_SIZE], int ttl)
 {
+    char host[256];
     int wc = 0;
     int rc = 0;
+    int code = -1;
     int sendfd;
+    char canonname[INET_ADDRSTRLEN];
+    struct ip *ip;
+    struct timeval send_t, reply_t;
+    int unreachable = 0;
+    int got_there = 0;
 
+    printf(" %d", ttl);
     for (int i = 0; i < tr->n_probes; ++i)
     {
         sendfd = create_dgram_socket(AF_INET);
@@ -132,28 +157,71 @@ static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_pac
         tr->sin_bind.sin_port = htons(ntohs(tr->sin_bind.sin_port) + 1);
         if (bind_socket(sendfd, (struct sockaddr *)&tr->sin_bind, sizeof(tr->sin_bind)) == -1)
             return (-1);
+        gettimeofday(&send_t, NULL);
         if (send_probe(sendfd, &tr->sin_send, send_packet) == -1)
             return (-1);
         wc += DGRAM_SIZE;
-        ft_printf("%d %d\n", ((struct rec *)send_packet)->seq, ((struct rec *)send_packet)->ttl);
         rc = wait_reply(tr->recvfd, &tr->sin_recv, rcv_packet);
+        gettimeofday(&reply_t, NULL);
         if (rc == -1)
             return (-1);
-        if (rc == 0)
-            ft_printf(" *");
-        if (process_icmp(rc, rcv_packet, tr->sin_bind.sin_port, tr->sin_send.sin_port) == 1)
-            ft_printf(" reached\n");
-        ft_bzero(rcv_packet, DGRAM_SIZE + 1);
+        if (rc == 0){
+            printf(" *");
+            fflush(stdout);
+            goto update;
+        }
+        if (tr->last_addr != tr->sin_recv.sin_addr.s_addr){
+            tr->last_addr =tr->sin_recv.sin_addr.s_addr;
+            if (sock_ntop_host((struct sockaddr *)&tr->sin_recv, sizeof(tr->sin_recv), canonname, sizeof(canonname)) == -1)
+                return (-1);
+            if (resolve_host((struct sockaddr*)&tr->sin_recv,  sizeof(tr->sin_recv), host, sizeof(host)) == -1)
+                return (-1);
+            printf(" %s (%s)", host,canonname);
+        }
+        printf(" %.3f ms",deltaT(&send_t,&reply_t));
+        code = process_icmp(rc, rcv_packet, tr->sin_bind.sin_port, tr->sin_send.sin_port, 0);
+        if (code == 1){
+            got_there += ICMP_UNREACH_PORT;
+            ip = (struct ip *)rcv_packet;
+						if (ip->ip_ttl <= 1)
+							printf(" !");
+        }
+        else if (code == ICMP_UNREACH_NET){
+            ++unreachable;
+            printf(" !N");
+        }
+        else if (code == ICMP_UNREACH_HOST){
+            ++unreachable;
+            printf(" !H");
+        }
+        else if (code == ICMP_UNREACH_PROTOCOL){
+            ++unreachable;
+            printf(" !P");
+        }
+        else if (code == ICMP_UNREACH_NEEDFRAG){
+            ++unreachable;
+            printf(" !F");
+        }
+        else if (code == ICMP_UNREACH_SRCFAIL){
+            ++unreachable;
+            printf(" !S");
+        }
+        update:
+        ft_bzero(rcv_packet, RECV_SIZE);
         update_packet(send_packet);
         tr->sin_send.sin_port = htons(ntohs(tr->sin_send.sin_port) + 1);
         close(sendfd);
     }
+    printf("\n");
+    if (got_there || unreachable >= tr->n_probes -1)
+        exit(0);
 
-    return (wc);
+    return (1);
 }
 
 int trace_loop(struct tr *tr)
 {
+    char presentational_address[INET_ADDRSTRLEN];
     char packet[DGRAM_SIZE];
     ft_bzero(packet, DGRAM_SIZE);
     struct rec *rec;
@@ -162,15 +230,22 @@ int trace_loop(struct tr *tr)
     rec->ttl = 1;
     gettimeofday(&rec->tv, NULL);
 
-    char rcv_packet[DGRAM_SIZE + 1];
+    char rcv_packet[RECV_SIZE];
     int recvfd = create_raw_icmp_socket(AF_INET);
+    if (recvfd == -1)
+        return (-1);
     tr->recvfd = recvfd;
-    int recv_len = DGRAM_SIZE + 1;
-    ft_bzero(rcv_packet, DGRAM_SIZE + 1);
+    int recv_len = RECV_SIZE;
+    ft_bzero(rcv_packet, RECV_SIZE);
 
-    set_local_bind_addr(&tr->sin_bind);
-    set_host_addr(&tr->sin_send, tr->host_address, UDP_PORT, AF_INET);
+    if (set_local_bind_addr(&tr->sin_bind) == -1)
+        return (-1);
+    if (set_host_addr(&tr->sin_send, tr->host_address, UDP_PORT, AF_INET) == -1)
+        return (-1);
+    if (sock_ntop_host((struct sockaddr *)&tr->sin_send, sizeof(tr->sin_send), presentational_address, sizeof(presentational_address)) == -1)
+        return (-1); 
 
+    printf("traceroute to %s (%s), %d hops max, %d byte packets\n", tr->host_address, presentational_address, tr->max_ttl, DGRAM_SIZE + sizeof(struct ip) + sizeof(struct udphdr));
     for (int i = 1; i <= tr->max_ttl; ++i)
     {
         if (send_recv_n(tr, packet, rcv_packet, i) == -1)
@@ -197,7 +272,7 @@ int send_n_probes(int n, struct sockaddr_in *sin_send, struct sockaddr_in *sin_b
         if (send_probe(sendfd, sin_send, packet) == -1)
             return (-1);
         wc += DGRAM_SIZE;
-        ft_printf("%d %d\n", ((struct rec *)packet)->seq, ((struct rec *)packet)->ttl);
+        printf("%d %d\n", ((struct rec *)packet)->seq, ((struct rec *)packet)->ttl);
         update_packet(packet);
         sin_send->sin_port = htons(ntohs(sin_send->sin_port) + 1);
         close(sendfd);
@@ -212,14 +287,14 @@ int send_probe(int sendfd, struct sockaddr_in *sin_send, char packet[DGRAM_SIZE]
 
     if ((wc = sendto(sendfd, packet, DGRAM_SIZE, 0, (struct sockaddr *)sin_send, sizeof(struct sockaddr_in))) == -1)
     {
-        ft_printf("ft_traceroute: sendto: %s\n", strerror(errno));
+        printf("ft_traceroute: sendto: %s\n", strerror(errno));
         return (-1);
     }
 
     return (wc);
 }
 
-int recv_n_packets(int n, int recvfd, struct sockaddr_in *sin_recv, char packet[DGRAM_SIZE + 1])
+int recv_n_packets(int n, int recvfd, struct sockaddr_in *sin_recv, char packet[RECV_SIZE])
 {
     int rc = 0;
 
@@ -227,13 +302,13 @@ int recv_n_packets(int n, int recvfd, struct sockaddr_in *sin_recv, char packet[
     {
         if (wait_reply(recvfd, sin_recv, packet) == -1)
             return (-1);
-        rc += DGRAM_SIZE + 1;
+        rc += RECV_SIZE;
     }
 
     return (rc);
 }
 
-int wait_reply(int recvfd, struct sockaddr_in *sin_recv, char packet[DGRAM_SIZE + 1])
+int wait_reply(int recvfd, struct sockaddr_in *sin_recv, char packet[RECV_SIZE])
 {
     int rc = 0;
     int recv_len = DGRAM_SIZE;
@@ -249,9 +324,9 @@ int wait_reply(int recvfd, struct sockaddr_in *sin_recv, char packet[DGRAM_SIZE 
 
     if (select(recvfd + 1, &fds, (fd_set *)0, (fd_set *)0, &wait) > 0)
     {
-        if ((rc = recvfrom(recvfd, packet, DGRAM_SIZE + 1, 0, (struct sockaddr *)sin_recv, &recv_len)) == -1)
+        if ((rc = recvfrom(recvfd, packet, RECV_SIZE, 0, (struct sockaddr *)sin_recv, &recv_len)) == -1)
         {
-            ft_printf("ft_traceroute: recvfrom: %s\n", strerror(errno));
+            printf("ft_traceroute: recvfrom: %s\n", strerror(errno));
             return (-1);
         }
     }
@@ -259,7 +334,7 @@ int wait_reply(int recvfd, struct sockaddr_in *sin_recv, char packet[DGRAM_SIZE 
     return (rc);
 }
 
-int process_icmp(int rc, char packet[DGRAM_SIZE + 1], uint16_t sport, uint16_t dport)
+int process_icmp(int rc, char packet[RECV_SIZE], uint16_t sport, uint16_t dport, int verbose)
 {
     int hlen1, hlen2, icmplen, ret;
     struct ip *ip, *hip;
@@ -271,63 +346,39 @@ int process_icmp(int rc, char packet[DGRAM_SIZE + 1], uint16_t sport, uint16_t d
     icmp = (struct icmp *)(packet + hlen1);
     if ((icmplen = rc - hlen1) < 8)
     {
-        ft_printf("not enough to look for ICMP header\n");
+        if (verbose)
+            printf("not enough to look for ICMP header\n");
         return (-1);
     }
 
-    if (icmp->icmp_type == ICMP_TIMXCEED &&
-        icmp->icmp_code == ICMP_TIMXCEED_INTRANS)
+    if ((icmp->icmp_type == ICMP_TIMXCEED &&
+        icmp->icmp_code == ICMP_TIMXCEED_INTRANS) || icmp->icmp_type == ICMP_UNREACH)
     {
         if (icmplen < 8 + sizeof(struct ip))
         {
-            ft_printf("not enought data to look at inner ip\n");
+            if (verbose)
+                printf("not enought data to look at inner ip\n");
             return (-1);
         }
-
         hip = (struct ip *)(packet + hlen1 + 8);
         hlen2 = hip->ip_hl << 2;
         if (icmplen < 8 + hlen2 + 4)
         {
-            ft_printf("not enough data to look for UDP port\n");
+            if (verbose)
+                printf("not enough data to look for UDP port\n");
             return (-1);
         }
+        
         udp = (struct udphdr *)(packet + hlen1 + 8 + hlen2);
         if (hip->ip_p == IPPROTO_UDP &&
             udp->uh_sport == sport &&
             udp->uh_dport == dport)
         {
-            ft_printf("we hit an intermediate router\n");
-            return (-2);
+            if (icmp->icmp_type != ICMP_UNREACH)
+                return (-2);
+            return(icmp->icmp_code);
         }
     }
-    else if (icmp->icmp_type == ICMP_UNREACH)
-    {
-        if (icmplen < 8 + sizeof(struct ip))
-        {
-            ft_printf("not enought data to look at inner IP\n");
-            return (-1);
-        }
-
-        hip = (struct ip *)(packet + hlen1 + 8);
-        hlen2 = hip->ip_hl << 2;
-        if (icmplen < 8 + hlen2 + 4)
-        {
-            ft_printf("not enough data to look for UDP port\n");
-            return (-1);
-        }
-        udp = (struct udphdr *)(packet + hlen1 + 8 + hlen2);
-        if (hip->ip_p == IPPROTO_UDP &&
-            udp->uh_sport == sport &&
-            udp->uh_dport == dport)
-        {
-            if (icmp->icmp_code == ICMP_UNREACH_PORT)
-            {
-                return (1);
-            }
-            return (icmp->icmp_code);
-        }
-    }
-
     return -1;
 }
 
@@ -337,7 +388,7 @@ int set_ttl_sock_opt(int sockfd, int ttl)
 
     if (setsockopt(sockfd, SOL_IP, IP_TTL, &val, sizeof(val)) != 0)
     {
-        ft_printf("ft_traceroute: setsockopt: %s\n", strerror(errno));
+        printf("ft_traceroute: setsockopt: %s\n", strerror(errno));
         return (-1);
     }
     return (0);

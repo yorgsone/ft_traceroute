@@ -3,36 +3,57 @@
 #include "ft_traceroute.h"
 
 
-void test_correct_prints(){
-    assert(false && "test_correct_prints");
+void test_resolve_address(){
+    char host[256];
+    struct sockaddr_in sin_host;
+    bool err = false;
+
+    ft_bzero(host, sizeof(host));
+    err = set_host_addr(&sin_host, "8.8.8.8", UDP_PORT, AF_INET);
+    assert(!err && "failed set_host_addr");
+    
+    err = resolve_host((struct sockaddr*)&sin_host, sizeof(sin_host), host, sizeof(host));
+    assert(!err && "test_resolve_address");
+    assert(ft_strncmp(host, "dns.google", ft_strlen("dns.google")) == 0 && "wrong host name resolved");
 }
 
 void test_time_diffs(){
-    assert(false && "test_time_diffs");
+    struct timeval t1;
+    struct timeval t2;
+
+    gettimeofday(&t1, NULL);
+    sleep(1);
+    gettimeofday(&t2, NULL);
+    int diff = deltaT(&t1, &t2);
+    assert(diff == 1000 && "test_time_diffs");
 }
 
-void test_fail_trace_loop(int n_probes, int max_ttl){
+void test_fail_trace_loop(int n_probes, int max_ttl, char *address){
     struct tr tr;
 
+    ft_bzero(&tr, sizeof(tr));
+    tr.last_addr = 0;
     tr.n_probes = n_probes;
     tr.max_ttl = max_ttl;
     tr.max_wait = MAX_WAIT;
-    tr.host_address = "asd";
+    tr.host_address = address;
 
     assert(trace_loop(&tr) == -1 && "test_fail_trace_loop");
 }
 
 
-void test_trace_loop(int n_probes, int max_ttl)
+void test_trace_loop(int n_probes, int max_ttl, char *address)
 {
     struct tr tr;
 
+    ft_bzero(&tr, sizeof(tr));
     tr.n_probes = n_probes;
     tr.max_ttl = max_ttl;
     tr.max_wait = MAX_WAIT;
-    tr.host_address = "8.8.8.8";
+    tr.host_address = address;
 
-    assert(trace_loop(&tr) == true && "test_traceroute_loop");
+    int tt = trace_loop(&tr);
+    assert(tt == true && "test_traceroute_loop");
 }
 
 void test_process_icmp(int ttl)
@@ -55,32 +76,32 @@ void test_process_icmp(int ttl)
 
     send_probe(sendfd, &sin_send, packet);
 
-    char rcv_packet[DGRAM_SIZE + 1];
+    char rcv_packet[RECV_SIZE];
     int recvfd = create_raw_icmp_socket(AF_INET);
     int bytes_recvd = -1;
-    int recv_len = DGRAM_SIZE + 1;
+    int recv_len = RECV_SIZE;
     struct sockaddr_in sin_recv;
-    ft_bzero(rcv_packet, DGRAM_SIZE + 1);
+    ft_bzero(rcv_packet, RECV_SIZE);
 
     int rc = wait_reply(recvfd, &sin_recv, rcv_packet);
     ft_printf("%d\n", rc);
     assert(rc != -1 && "faulty receive");
-    assert(process_icmp(rc, rcv_packet, sin_bind.sin_port, sin_send.sin_port) != -1 && "failed to process icmp packet");
+    assert(process_icmp(rc, rcv_packet, sin_bind.sin_port, sin_send.sin_port, 0) != -1 && "failed to process icmp packet");
 }
 
 void test_recv_n_packets(int n)
 {
-    char packet[DGRAM_SIZE + 1];
+    char packet[RECV_SIZE];
     int recvfd = create_raw_icmp_socket(AF_INET);
     int bytes_recvd = -1;
-    int recv_len = DGRAM_SIZE + 1;
+    int recv_len = RECV_SIZE;
     struct sockaddr_in sin_recv;
 
-    ft_bzero(packet, DGRAM_SIZE + 1);
+    ft_bzero(packet, RECV_SIZE);
 
     int rc = recv_n_packets(n, recvfd, &sin_recv, packet);
     ft_printf("%d\n", rc);
-    assert(rc == (DGRAM_SIZE + 1) * n && "test_recv_n_packets");
+    assert(rc == (RECV_SIZE) * n && "test_recv_n_packets");
 
     close(recvfd);
 }
@@ -175,10 +196,12 @@ int main()
     test_send_n_probes(2);
     test_recv_n_packets(2);
     test_process_icmp(11);
-    test_trace_loop(3, 2);
-    test_fail_trace_loop(3, 2);
+    test_trace_loop(3, 3, "8.8.8.8");
+    test_trace_loop(3, 12, "dns.google");
+    test_trace_loop(3, 15, "amazon.fr");
+    test_fail_trace_loop(1, 1, "adf");
     test_time_diffs();
-    test_correct_prints();
+    test_resolve_address();
 
     // CLEAN
 }

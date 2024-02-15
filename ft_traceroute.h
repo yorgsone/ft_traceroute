@@ -12,9 +12,11 @@
 #include <netdb.h>
 #include <sys/time.h>
 #include <arpa/inet.h>
+#include <stdio.h>
 #include "libft/include/libft.h"
 
-#define DGRAM_SIZE 60 // 20 IP + 8 UDP + 32 DATA
+#define DGRAM_SIZE 32 // 20 IP + 8 UDP + 32 DATA
+#define RECV_SIZE 60
 #define MAX_TTL 30
 #define PROBES_NUM 3
 #define UDP_PORT "33434"
@@ -36,7 +38,10 @@ struct tr
     int max_ttl;
     int n_probes;
     int max_wait;
+    int got_there;
+    int unreachable;
     char *host_address;
+    in_addr_t last_addr;
     struct sockaddr_in sin_bind;
     struct sockaddr_in sin_send;
     struct sockaddr_in sin_recv;
@@ -51,10 +56,12 @@ int sock_ntop_host(const struct sockaddr *, socklen_t, char *, size_t);
 int set_host_addr(struct sockaddr_in *, const char *, const char *, int);
 int send_probe(int, struct sockaddr_in *, char[DGRAM_SIZE]);
 int send_n_probes(int, struct sockaddr_in *, struct sockaddr_in *, char[DGRAM_SIZE], int);
-int wait_reply(int, struct sockaddr_in *, char[DGRAM_SIZE + 1]);
-int recv_n_packets(int, int, struct sockaddr_in *, char[DGRAM_SIZE + 1]);
-int process_icmp(int, char[DGRAM_SIZE + 1], uint16_t, uint16_t);
+int wait_reply(int, struct sockaddr_in *, char[RECV_SIZE]);
+int recv_n_packets(int, int, struct sockaddr_in *, char[RECV_SIZE]);
+int process_icmp(int, char[RECV_SIZE], uint16_t, uint16_t, int verbose);
 int set_ttl_sock_opt(int, int);
 int trace_loop(struct tr *tr);
+double deltaT(struct timeval *t1p, struct timeval *t2p);
+int resolve_host(struct sockaddr *sa, socklen_t sa_len , char *host, socklen_t host_len);
 
 #endif
