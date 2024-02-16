@@ -1,4 +1,5 @@
 NAME 		= ft_traceroute
+TESTS_EXEC  = test_ft_traceroute
 CC			= gcc
 INC			= -I inc
 FLAGS		= -Wall -Wextra -Werror $(INC)
@@ -30,9 +31,9 @@ $(BUILD_PATH)/%.o: $(SRC_PATH)/%.c
 
 test:
 	@make -s -C $(LIB_PATH)
-	@$(CC) $(FLAGS_CC) -o test_ft_traceroute $(SRC_TEST_SOURCES) $(LIB_SOURCES)
+	@$(CC) $(FLAGS_CC) -o $(TESTS_EXEC) $(SRC_TEST_SOURCES) $(LIB_SOURCES)
 	@echo "Running tests"
-	@./test_ft_traceroute
+	@./$(TESTS_EXEC)
 
 
 clean:
@@ -42,7 +43,7 @@ clean:
 
 fclean: clean
 	@make fclean -s -C $(LIB_PATH)
-	@rm -f $(NAME) $(LIB_NAME)
+	@rm -f $(NAME) $(TESTS_EXEC) $(LIB_NAME)
 	@echo "** fclean **"
 
 re: fclean
