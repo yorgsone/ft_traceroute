@@ -247,10 +247,10 @@ int main()
     test_set_ttl_sock_opt(&create_dgram_socket, 30);
     test_bind_socket();
     test_get_send_addr();
-    //
+    //pair tests
     test_send_probe();
     test_wait_reply();
-    //
+    //pair tests
     test_send_n_probes(3);
     test_wait_n_replies(3);
     //

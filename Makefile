@@ -6,7 +6,7 @@ LIB_PATH	= libft
 BUILD_PATH	= obj
 SRC_PATH	= src
 
-SOURCES = ft_traceroute.c 
+SOURCES = trace_loop.c address_ops.c send_and_replies.c sock_ops.c time_delta.c 
 SOURCES_TEST = $(SOURCES) traceroute_test.c
 
 LIB_SOURCES = $(LIB_PATH)/libft.a
