@@ -10,7 +10,7 @@ int create_dgram_socket(int domain)
     sockfd = socket(domain, SOCK_DGRAM, 0);
     if (sockfd == -1)
     {
-        printf("ft_traceroute: socket: %s\n", strerror(errno));
+        printf("ft_traceroute: udp dgram socket: %s\n", strerror(errno));
         return (-1);
     }
     return sockfd;
@@ -26,7 +26,7 @@ int create_raw_icmp_socket(int domain)
     sockfd = socket(domain, SOCK_RAW, domain == AF_INET ? IPPROTO_ICMP : IPPROTO_ICMPV6);
     if (sockfd == -1)
     {
-        printf("ft_traceroute: socket: %s\n", strerror(errno));
+        printf("ft_traceroute: raw icmp socket: %s\n", strerror(errno));
         return (-1);
     }
     return sockfd;
@@ -42,14 +42,14 @@ int bind_socket(int sockfd, struct sockaddr *sa, socklen_t len)
     return (0);
 }
 
-int set_local_bind_addr(struct sockaddr_in *sa)
+int set_local_bind_addr(struct sockaddr_in *sa, uint16_t bind_port)
 {
     if (!sa)
         return (-1);
 
     ft_bzero(sa, sizeof(struct sockaddr_in));
     sa->sin_family = AF_INET;
-    sa->sin_port = htons(IDENT_PORT(getpid()));
+    sa->sin_port = htons(bind_port);
     sa->sin_addr.s_addr = INADDR_ANY;
     return (0);
 }
@@ -125,20 +125,48 @@ int resolve_host(struct sockaddr *sa, socklen_t sa_len, char *host, socklen_t ho
     return (0);
 }
 
-static void update_packet(char packet[DGRAM_SIZE])
+int create_send_socket(int sendfd, int ttl, const struct sockaddr *sa_bind, socklen_t sa_len, int family)
 {
-    struct rec *rec;
+    sendfd = create_dgram_socket(family);
+    if (sendfd == -1)
+        return (-1);
+    if (set_ttl_sock_opt(sendfd, ttl) == -1)
+        return (-1);
+    if (bind_socket(sendfd, (struct sockaddr *)sa_bind, sa_len) == -1)
+        return (-1);
+    return sendfd;
+}
 
-    rec = (struct rec *)packet;
-    rec->seq += 1;
-    rec->ttl += 1;
-    gettimeofday(&rec->tv, NULL);
+static int num_places(int n)
+{
+    if (n < 0)
+        n = (n == INT_MIN) ? INT_MAX : -n;
+    if (n < 10)
+        return 1;
+    if (n < 100)
+        return 2;
+    if (n < 1000)
+        return 3;
+    if (n < 10000)
+        return 4;
+    if (n < 100000)
+        return 5;
+    if (n < 1000000)
+        return 6;
+    if (n < 10000000)
+        return 7;
+    if (n < 100000000)
+        return 8;
+    if (n < 1000000000)
+        return 9;
+    /*      2147483647 is 2^31-1 - add more ifs as needed
+       and adjust this final return as well. */
+    return 10;
 }
 
 static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_packet[RECV_SIZE], int ttl)
 {
     char host[256];
-    int wc = 0;
     int rc = 0;
     int code = -1;
     int sendfd;
@@ -147,31 +175,32 @@ static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_pac
     struct timeval send_t, reply_t;
     int unreachable = 0;
     int got_there = 0;
+    uint16_t current_sport;
 
-    printf(" %d", ttl);
+    printf("%*d ", num_places(ttl) == 1 ? 2 : num_places(ttl), ttl);
     for (int i = 0; i < tr->n_probes; ++i)
     {
-        sendfd = create_dgram_socket(AF_INET);
+        current_sport = htons(tr->ident_port + tr->seq);
+        tr->sin_bind.sin_port = current_sport;
+        sendfd = create_send_socket(sendfd, ttl, (struct sockaddr *)&tr->sin_bind, sizeof(tr->sin_bind), AF_INET);
         if (sendfd == -1)
-            return (-1);
-        if (set_ttl_sock_opt(sendfd, ttl) == -1)
-            return (-1);
-        tr->sin_bind.sin_port = htons(ntohs(tr->sin_bind.sin_port) + 1);
-        if (bind_socket(sendfd, (struct sockaddr *)&tr->sin_bind, sizeof(tr->sin_bind)) == -1)
             return (-1);
         gettimeofday(&send_t, NULL);
         if (send_probe(sendfd, &tr->sin_send, send_packet) == -1)
             return (-1);
-        wc += DGRAM_SIZE;
-        rc = wait_reply(tr->recvfd, &tr->sin_recv, rcv_packet);
+        rc = wait_reply(tr->recvfd, &tr->sin_recv, rcv_packet, MAX_WAIT, 0);
         gettimeofday(&reply_t, NULL);
         if (rc == -1)
             return (-1);
+        while ((code = process_icmp(rc, rcv_packet, current_sport, tr->sin_send.sin_port, 0)) == -3)
+        {
+            rc = wait_reply(tr->recvfd, &tr->sin_recv, rcv_packet, MAX_WAIT, 0);
+            gettimeofday(&reply_t, NULL);
+        }
         if (rc == 0)
         {
             printf(" *");
-            fflush(stdout);
-            goto update;
+            goto update_continue;
         }
         if (tr->last_addr != tr->sin_recv.sin_addr.s_addr)
         {
@@ -182,8 +211,7 @@ static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_pac
                 return (-1);
             printf(" %s (%s)", host, canonname);
         }
-        printf(" %.3f ms", deltaT(&send_t, &reply_t));
-        code = process_icmp(rc, rcv_packet, tr->sin_bind.sin_port, tr->sin_send.sin_port, 0);
+        printf("  %.3f ms", deltaT(&send_t, &reply_t));
         if (code == ICMP_UNREACH_PORT)
         {
             ++got_there;
@@ -216,9 +244,20 @@ static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_pac
             ++unreachable;
             printf(" !S");
         }
-    update:
+        else if (code == ICMP_UNREACH_FILTER_PROHIB)
+        {
+            ++unreachable;
+            printf(" !X");
+        }
+        else if (code > 0)
+        {
+            ++unreachable;
+            printf(" !%d", code);
+        }
+
+    update_continue:
         ft_bzero(rcv_packet, RECV_SIZE);
-        update_packet(send_packet);
+        tr->seq++;
         tr->sin_send.sin_port = htons(ntohs(tr->sin_send.sin_port) + 1);
         close(sendfd);
     }
@@ -231,14 +270,10 @@ static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_pac
 
 int trace_loop(struct tr *tr)
 {
+    tr->ident_port = IDENT_PORT(getpid());
     char presentational_address[INET_ADDRSTRLEN];
     char packet[DGRAM_SIZE];
     ft_bzero(packet, DGRAM_SIZE);
-    struct rec *rec;
-    rec = (struct rec *)packet;
-    rec->seq = 1;
-    rec->ttl = 1;
-    gettimeofday(&rec->tv, NULL);
 
     char rcv_packet[RECV_SIZE];
     int recvfd = create_raw_icmp_socket(AF_INET);
@@ -248,47 +283,20 @@ int trace_loop(struct tr *tr)
     int recv_len = RECV_SIZE;
     ft_bzero(rcv_packet, RECV_SIZE);
 
-    if (set_local_bind_addr(&tr->sin_bind) == -1)
+    if (set_local_bind_addr(&tr->sin_bind, tr->ident_port) == -1)
         return (-1);
     if (set_host_addr(&tr->sin_send, tr->host_address, UDP_PORT, AF_INET) == -1)
         return (-1);
     if (sock_ntop_host((struct sockaddr *)&tr->sin_send, sizeof(tr->sin_send), presentational_address, sizeof(presentational_address)) == -1)
         return (-1);
 
-    printf("traceroute to %s (%s), %d hops max, %d byte packets\n", tr->host_address, presentational_address, tr->max_ttl, DGRAM_SIZE + sizeof(struct ip) + sizeof(struct udphdr));
+    printf("traceroute to %s (%s), %d hops max, %ld byte packets\n", tr->host_address, presentational_address, tr->max_ttl, DGRAM_SIZE + sizeof(struct ip) + sizeof(struct udphdr));
     for (int i = 1; i <= tr->max_ttl; ++i)
     {
         if (send_recv_n(tr, packet, rcv_packet, i) == -1)
             return (-1);
     }
     return 1;
-}
-
-int send_n_probes(int n, struct sockaddr_in *sin_send, struct sockaddr_in *sin_bind, char packet[DGRAM_SIZE], int ttl)
-{
-    int wc = 0;
-    int sendfd;
-
-    for (int i = 0; i < n; ++i)
-    {
-        sendfd = create_dgram_socket(AF_INET);
-        if (sendfd == -1)
-            return (-1);
-        if (set_ttl_sock_opt(sendfd, ttl) == -1)
-            return (-1);
-        sin_bind->sin_port = htons(ntohs(sin_bind->sin_port) + 1);
-        if (bind_socket(sendfd, (struct sockaddr *)sin_bind, sizeof(*sin_bind)) == -1)
-            return (-1);
-        if (send_probe(sendfd, sin_send, packet) == -1)
-            return (-1);
-        wc += DGRAM_SIZE;
-        printf("%d %d\n", ((struct rec *)packet)->seq, ((struct rec *)packet)->ttl);
-        update_packet(packet);
-        sin_send->sin_port = htons(ntohs(sin_send->sin_port) + 1);
-        close(sendfd);
-    }
-
-    return (wc);
 }
 
 int send_probe(int sendfd, struct sockaddr_in *sin_send, char packet[DGRAM_SIZE])
@@ -304,21 +312,7 @@ int send_probe(int sendfd, struct sockaddr_in *sin_send, char packet[DGRAM_SIZE]
     return (wc);
 }
 
-int recv_n_packets(int n, int recvfd, struct sockaddr_in *sin_recv, char packet[RECV_SIZE])
-{
-    int rc = 0;
-
-    for (int i = 0; i < n; ++i)
-    {
-        if (wait_reply(recvfd, sin_recv, packet) == -1)
-            return (-1);
-        rc += RECV_SIZE;
-    }
-
-    return (rc);
-}
-
-int wait_reply(int recvfd, struct sockaddr_in *sin_recv, char packet[RECV_SIZE])
+int wait_reply(int recvfd, struct sockaddr_in *sin_recv, char packet[RECV_SIZE], long wait_s, long wait_ms)
 {
     int rc = 0;
     int recv_len = DGRAM_SIZE;
@@ -329,8 +323,8 @@ int wait_reply(int recvfd, struct sockaddr_in *sin_recv, char packet[RECV_SIZE])
 
     FD_ZERO(&fds);
     FD_SET(recvfd, &fds);
-    wait.tv_sec = MAX_WAIT;
-    wait.tv_usec = 0;
+    wait.tv_sec = wait_s;
+    wait.tv_usec = wait_ms;
 
     if (select(recvfd + 1, &fds, (fd_set *)0, (fd_set *)0, &wait) > 0)
     {
@@ -357,7 +351,7 @@ int process_icmp(int rc, char packet[RECV_SIZE], uint16_t sport, uint16_t dport,
     if ((icmplen = rc - hlen1) < 8)
     {
         if (verbose)
-            printf("not enough to look for ICMP header\n");
+            printf("not enough data to look for ICMP header\n");
         return (-1);
     }
 
@@ -368,7 +362,7 @@ int process_icmp(int rc, char packet[RECV_SIZE], uint16_t sport, uint16_t dport,
         if (icmplen < 8 + sizeof(struct ip))
         {
             if (verbose)
-                printf("not enought data to look at inner ip\n");
+                printf("not enough data to look at inner ip\n");
             return (-1);
         }
         hip = (struct ip *)(packet + hlen1 + 8);
@@ -381,13 +375,19 @@ int process_icmp(int rc, char packet[RECV_SIZE], uint16_t sport, uint16_t dport,
         }
 
         udp = (struct udphdr *)(packet + hlen1 + 8 + hlen2);
-        if (hip->ip_p == IPPROTO_UDP &&
-            udp->uh_sport == sport &&
-            udp->uh_dport == dport)
+        if (hip->ip_p == IPPROTO_UDP)
         {
-            if (icmp->icmp_type != ICMP_UNREACH)
-                return (-2);
-            return (icmp->icmp_code);
+            if (udp->uh_sport == sport &&
+                udp->uh_dport == dport)
+            {
+                if (icmp->icmp_type != ICMP_UNREACH)
+                    return (-2);
+                return (icmp->icmp_code);
+            }
+            else
+            {
+                return -3;
+            }
         }
     }
     return -1;

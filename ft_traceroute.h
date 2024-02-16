@@ -40,6 +40,8 @@ struct tr
     int max_wait;
     int got_there;
     int unreachable;
+    uint16_t ident_port;
+    uint16_t seq;
     char *host_address;
     in_addr_t last_addr;
     struct sockaddr_in sin_bind;
@@ -50,18 +52,17 @@ struct tr
 int create_dgram_socket(int);
 int create_raw_icmp_socket(int);
 int bind_socket(int, struct sockaddr *, socklen_t);
-int set_local_bind_addr(struct sockaddr_in *);
+int set_local_bind_addr(struct sockaddr_in *, uint16_t bind_port);
 struct addrinfo *host_serv(const char *, const char *, int, int, int);
 int sock_ntop_host(const struct sockaddr *, socklen_t, char *, size_t);
 int set_host_addr(struct sockaddr_in *, const char *, const char *, int);
 int send_probe(int, struct sockaddr_in *, char[DGRAM_SIZE]);
-int send_n_probes(int, struct sockaddr_in *, struct sockaddr_in *, char[DGRAM_SIZE], int);
-int wait_reply(int, struct sockaddr_in *, char[RECV_SIZE]);
-int recv_n_packets(int, int, struct sockaddr_in *, char[RECV_SIZE]);
+int wait_reply(int, struct sockaddr_in *, char[RECV_SIZE], long wait_s, long wait_ms);
 int process_icmp(int, char[RECV_SIZE], uint16_t, uint16_t, int verbose);
 int set_ttl_sock_opt(int, int);
 int trace_loop(struct tr *tr);
 double deltaT(struct timeval *t1p, struct timeval *t2p);
-int resolve_host(struct sockaddr *sa, socklen_t sa_len , char *host, socklen_t host_len);
+int resolve_host(struct sockaddr *sa, socklen_t sa_len, char *host, socklen_t host_len);
+int create_send_socket(int sendfd, int ttl, const struct sockaddr *sa_bind, socklen_t sa_len, int family);
 
 #endif
