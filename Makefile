@@ -6,8 +6,10 @@ LIB_PATH	= libft
 BUILD_PATH	= obj
 SRC_PATH	= src
 
-SOURCES = trace_loop.c address_ops.c send_and_replies.c sock_ops.c time_delta.c 
-SOURCES_TEST = $(SOURCES) traceroute_test.c
+SOURCES = ft_traceroute.c trace_loop.c address_ops.c send_and_replies.c sock_ops.c time_delta.c 
+TEST_SOURCES = $(filter-out ft_traceroute.c,$(SOURCES)) traceroute_test.c
+SRC_TEST_SOURCES = $(TEST_SOURCES:%.c=$(SRC_PATH)/%.c)
+
 
 LIB_SOURCES = $(LIB_PATH)/libft.a
 
@@ -28,9 +30,9 @@ $(BUILD_PATH)/%.o: $(SRC_PATH)/%.c
 
 test:
 	@make -s -C $(LIB_PATH)
-	@$(CC) $(FLAGS_CC) $(SOURCES_TEST) $(LIB_SOURCES)
+	@$(CC) $(FLAGS_CC) -o test_ft_traceroute $(SRC_TEST_SOURCES) $(LIB_SOURCES)
 	@echo "Running tests"
-	@./a.out
+	@./test_ft_traceroute
 
 
 clean:
