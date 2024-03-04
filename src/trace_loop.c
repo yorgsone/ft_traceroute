@@ -22,8 +22,6 @@ static int num_places(int n)
         return 8;
     if (n < 1000000000)
         return 9;
-    /*      2147483647 is 2^31-1 - add more ifs as needed
-       and adjust this final return as well. */
     return 10;
 }
 
@@ -108,7 +106,7 @@ static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_pac
             ++unreachable;
             printf(" !S");
         }
-        else if (code == ICMP_UNREACH_FILTER_PROHIB)
+        else if (code == ICMP_UNREACH_HOST_PROHIB)
         {
             ++unreachable;
             printf(" !X");

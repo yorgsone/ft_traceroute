@@ -7,7 +7,7 @@ void usage_exit()
     printf("Usage:\n  ft_traceroute host\nOptions:\n  --help                      Read this help and exit\n");
     exit(0);
 }
-//just need to add some options for max wait, max ttl, n_probes and that's it
+
 int main(int argc, char **argv)
 {
     struct tr tr;
