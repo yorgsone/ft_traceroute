@@ -38,6 +38,7 @@ static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_pac
     struct timeval send_t;
     struct timeval reply_t;
     uint16_t current_sport;
+    int current_wait = MAX_WAIT;
 
     printf("%*d ", num_places(ttl) == 1 ? 2 : num_places(ttl), ttl);
     for (int i = 0; i < tr->n_probes; ++i)
@@ -47,23 +48,27 @@ static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_pac
         sendfd = create_send_socket(sendfd, ttl, (struct sockaddr *)&tr->sin_bind, sizeof(tr->sin_bind), AF_INET);
         if (sendfd == -1)
             return (-1);
+
         gettimeofday(&send_t, NULL);
         if (send_probe(sendfd, &tr->sin_send, send_packet) == -1)
             return (-1);
-        rc = wait_reply(tr->recvfd, &tr->sin_recv, rcv_packet, MAX_WAIT, 0);
-        gettimeofday(&reply_t, NULL);
-        if (rc == -1)
-            return (-1);
-        while ((code = process_icmp(rc, rcv_packet, current_sport, tr->sin_send.sin_port, 0)) == -3)
-        {
-            rc = wait_reply(tr->recvfd, &tr->sin_recv, rcv_packet, MAX_WAIT, 0);
+
+        while (1){
+            rc = wait_reply(tr->recvfd, &tr->sin_recv, rcv_packet, current_wait, 0);
             gettimeofday(&reply_t, NULL);
+            if (rc == -1)
+                return (-1);
+            else if (rc == 0)
+            {
+                printf(" *");
+                goto update_continue;
+            }
+            code = process_icmp(rc, rcv_packet, current_sport, tr->sin_send.sin_port, 0);
+            if (code == -3)
+                continue;
+            break;
         }
-        if (rc == 0)
-        {
-            printf(" *");
-            goto update_continue;
-        }
+
         if (tr->last_addr != tr->sin_recv.sin_addr.s_addr)
         {
             tr->last_addr = tr->sin_recv.sin_addr.s_addr;
@@ -118,6 +123,7 @@ static int send_recv_n(struct tr *tr, char send_packet[DGRAM_SIZE], char rcv_pac
         }
 
     update_continue:
+        current_wait = MAX_WAIT;
         ft_bzero(rcv_packet, RECV_SIZE);
         tr->seq++;
         tr->sin_send.sin_port = htons(ntohs(tr->sin_send.sin_port) + 1);
