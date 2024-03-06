@@ -1,4 +1,4 @@
-#include "../ft_traceroute.h"
+#include "../inc/ft_traceroute.h"
 
 static int num_places(int n)
 {

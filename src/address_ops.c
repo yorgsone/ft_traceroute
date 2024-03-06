@@ -1,4 +1,4 @@
-#include "../ft_traceroute.h"
+#include "../inc/ft_traceroute.h"
 
 int set_local_bind_addr(struct sockaddr_in *sa, uint16_t bind_port)
 {

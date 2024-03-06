@@ -1,4 +1,4 @@
-#include "../ft_traceroute.h"
+#include "../inc/ft_traceroute.h"
 
 
 int send_probe(int sendfd, struct sockaddr_in *sin_send, char packet[DGRAM_SIZE])

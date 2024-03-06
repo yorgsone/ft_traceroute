@@ -13,7 +13,7 @@
 #include <sys/time.h>
 #include <arpa/inet.h>
 #include <stdio.h>
-#include "libft/include/libft.h"
+#include "../libft/include/libft.h"
 
 #define DGRAM_SIZE 32 // 20 IP + 8 UDP + 32 DATA
 #define RECV_SIZE 60

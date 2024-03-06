@@ -1,4 +1,4 @@
-#include "../ft_traceroute.h"
+#include "../inc/ft_traceroute.h"
 
 
 int create_send_socket(int sendfd, int ttl, const struct sockaddr *sa_bind, socklen_t sa_len, int family)

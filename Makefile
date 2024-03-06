@@ -25,7 +25,7 @@ $(NAME): $(OBJECTS)
 	@$(CC) $(FLAGS_CC) -o $@ $(OBJECTS) $(LIB_SOURCES)
 	@echo "** $(NAME) **"
 
-$(BUILD_PATH)/%.o: $(SRC_PATH)/%.c
+$(BUILD_PATH)/%.o: $(SRC_PATH)/%.c inc/ft_traceroute.h
 	@mkdir -p $(@D)
 	@$(CC) $(FLAGS_CC) -c -o $@ $< $(INC)
 

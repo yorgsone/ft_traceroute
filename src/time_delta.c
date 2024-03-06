@@ -1,4 +1,4 @@
-#include "../ft_traceroute.h"
+#include "../inc/ft_traceroute.h"
 
 double deltaT(struct timeval *t1p, struct timeval *t2p)
 {

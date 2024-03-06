@@ -1,6 +1,6 @@
 #include <assert.h>
 #include <stdbool.h>
-#include "../ft_traceroute.h"
+#include "../inc/ft_traceroute.h"
 
 void refactor_and_relative_waittime()
 {
